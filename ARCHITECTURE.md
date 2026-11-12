@@ -1,6 +1,6 @@
 # Architecture — Digital Twin Ingestion Engine
 
-Status: **Approved 2026-11-11** with cost/observability/masking constraints. Phases 3–4 implemented; Phase 4 awaiting first real-API run.
+Status: **Operational.** Phases 1–4 complete (2026-11-11). Future work is maintenance and scoped feature expansion; see `manifest.md`.
 
 ## 1. Pipeline overview
 
@@ -119,4 +119,4 @@ date: YYYY-MM-DD
 
 ## 11. Out of scope (for now)
 
-Scheduling, non-Doc inputs, re-ingesting edited docs, two-way sync.
+Scheduling, non-Doc inputs, re-ingest command for processed docs, re-ingesting edited docs, two-way sync. Tracked as a backlog in `manifest.md`.
