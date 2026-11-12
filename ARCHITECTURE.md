@@ -1,6 +1,13 @@
-# Architecture — Digital Twin Ingestion Engine
+# Architecture — Digital Twin Multi-Agent Pipeline
 
-Status: **Operational.** Phases 1–4 complete (2026-11-11). Agent 2 (Critic & Validator) added 2026-11-12 (§9b). Future work is maintenance and scoped feature expansion; see `manifest.md`.
+Status: **Operational.** Phases 1–4 complete (2026-11-11). The active multi-agent pipeline is **Agent 1 (Retriever & Router)**, implemented by the ingestion engine and Drive folder architecture in §§1–9a, and **Agent 2 (Critic & Validator)**, added 2026-11-12 (§9b). Future work is maintenance and scoped feature expansion; see `manifest.md`.
+
+### Agent map
+
+| Agent | Responsibility | Implementation |
+|---|---|---|
+| **Agent 1: Retriever & Router** | Ingest (Google Docs, `.docx`, text-layer PDF) → YAML frontmatter tagging (`topic`, `tags`, `core_stance`, `date`) → category-first routing into the 5 configured folders → native Google Drive storage. That folder + frontmatter structure is the retrieval index: a query is routed to a category folder and matched on frontmatter. | `pipeline.py`, `migrate.py`, `extract.py`, `analyzer.py`, `frontmatter.py`, `drive.py` (§§1–9a) |
+| **Agent 2: Critic & Validator** | Verifies the retrieved set (exists, parses, correct folder, real tags, intent match, missed notes) and fact-checks the draft against the notes' exact text | `validator.py` (§9b) |
 
 ## 1. Pipeline overview
 
@@ -130,14 +137,14 @@ For bulk-migrating existing Drive files, a reviewed CSV manifest (gitignored) li
 ## 9b. Agent 2 — Critic & Validator (`validator.py`)
 
 ```
- query ──► Agent 1: Retriever (planned) ──► retrieved notes + draft ──► Agent 2: Critic & Validator
-           category routing +                                          │ 1. verify_retrieval
-           frontmatter matching                                        │ 2. verify_grounding
-                                                                       ▼
+ Agent 1: Retriever & Router                                        Agent 2: Critic & Validator
+ ingest ─► frontmatter ─► category-first ─► Drive    query ─► notes   │ 1. verify_retrieval
+ (Docs/.docx/PDF)  tags      routing        folders  routed + matched │ 2. verify_grounding
+                                                     + draft ────────►▼
                                                   APPROVED / REJECTED + per-note, per-claim reasons
 ```
 
-Agent 2 is deterministic and offline: **no LLM calls, no spend, no network** (the Drive loader is read-only: `files.list` + `get_media`). It defines the contract Agent 1 must emit: a list of `RetrievalHit(note_id, category?, matched_tags?)` plus a draft.
+Agent 2 is deterministic and offline: **no LLM calls, no spend, no network** (the Drive loader is read-only: `files.list` + `get_media`). Its input is the retrieved set from Agent 1's folder + frontmatter structure, as a list of `RetrievalHit(note_id, category?, matched_tags?)`, plus a draft. It reads the same knowledge base Agent 1 writes: local previews (`preview_dir`) or the Drive category folders (`--drive`).
 
 | Component | Responsibility |
 |---|---|

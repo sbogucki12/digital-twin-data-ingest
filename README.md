@@ -1,6 +1,6 @@
 # digital-twin-data-ingest
 
-An ingestion engine that turns raw Google Docs into structured, Markdown-based knowledge for a personal **digital twin**.
+A two-agent pipeline for a personal **digital twin**. **Agent 1 (Retriever & Router)** ingests Google Docs, Word files, and PDFs into structured, category-routed Markdown in Google Drive. **Agent 2 (Critic & Validator)** audits retrieval and fact-checks answers drafted from those notes.
 
 ## Objective
 
@@ -104,15 +104,18 @@ python -m digital_twin_ingest migrate --manifest archive_manifest.csv --live    
 
 **Dry run is the default.** It runs the full pipeline — including the (cost-logged, capped) Claude call — and writes previews to `output/<Category>/`, but makes **no** Drive changes. Only `--live` writes to Drive. Re-running is safe: processed docs are skipped, and an interrupted live run resumes without re-calling Claude or duplicating uploads.
 
-## Agent 2: Critic & Validator
+## Multi-agent pipeline: Agent 1 (Retriever & Router) + Agent 2 (Critic & Validator)
 
-The ingestion engine builds the knowledge base. Answering questions *from* it is split between agents:
+Two agents make up the active pipeline:
 
-| Agent | Role | Status |
-|---|---|---|
-| Ingestion engine | Google Docs → classified Markdown notes with YAML frontmatter | ✅ Operational |
-| **Agent 1: Retriever** | Routes a query to a category and matches notes on their frontmatter; drafts a response | Planned (not in this repo yet) |
-| **Agent 2: Critic & Validator** | Audits Agent 1's retrieval and fact-checks the draft against the notes' exact text | ✅ Built (`validator.py`) |
+| Agent | What it does | Implemented by | Status |
+|---|---|---|---|
+| **Agent 1: Retriever & Router** | Ingests Google Docs, Word files, and text-layer PDFs; tags each note with YAML frontmatter (`topic`, `tags`, `core_stance`, `date`); routes it category-first into one of the 5 configured category folders (`Category_1` … `Category_5`); stores it natively in Google Drive. Retrieval runs over that structure: route to the category folder, then match on frontmatter. | `run`, `migrate`, `analyzer.py`, `frontmatter.py`, `drive.py` (the ingestion engine described above) | ✅ Operational |
+| **Agent 2: Critic & Validator** | Audits the notes retrieved for a query (right folder, real tags, real intent match) and fact-checks a drafted answer against the notes' exact text | `validator.py`, `validate` | ✅ Operational |
+
+Flow: Agent 1 builds and organizes the knowledge base. A question is routed to its category folder and matched against note frontmatter. The retrieved notes plus a drafted answer go to Agent 2, which approves or rejects them with per-note and per-claim reasons.
+
+### Agent 2 in detail
 
 Agent 2 is **deterministic and offline**: no model calls, no spend, no network (the optional Drive loader is read-only). It runs two checks:
 
@@ -128,7 +131,7 @@ python -m digital_twin_ingest validate --query "..." --retrieval agent1.json --d
 python -m digital_twin_ingest validate --drive --query "..." --doc <file>.md   # read KB from Drive
 ```
 
-`--retrieval` takes Agent 1's output as a JSON list of `{"note_id", "category"?, "matched_tags"?}`. Exit code `0` = approved, `1` = rejected, `2` = bad input.
+`--retrieval` takes the retrieved set as a JSON list of `{"note_id", "category"?, "matched_tags"?}`. Exit code `0` = approved, `1` = rejected, `2` = bad input.
 
 ## Project explainer site
 

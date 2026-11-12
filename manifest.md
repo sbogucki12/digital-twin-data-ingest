@@ -5,11 +5,14 @@
 
 ## Current State
 
-- **Project status: ✅ OPERATIONAL** (Phases 1–4 complete) · **Archive migration (`migrate`) and Agent 2 (Critic & Validator): engineer-verified, committed**
+- **Project status: ✅ OPERATIONAL** (Phases 1–4 complete) · **Multi-agent pipeline live: Agent 1 (Retriever & Router) ✅ + Agent 2 (Critic & Validator) ✅**
 - **Last updated:** 2026-11-12 by Claude Code
 - **Branch:** `main`, pushed to GitHub (`origin`). Migration feature and Agent 2 committed and pushed 2026-11-12.
 - **Tests:** 158 passing (`pytest -q`), `ruff check` clean, 91% line coverage overall (`validator.py` 100%; `pytest --cov=digital_twin_ingest`, `pytest-cov` in dev extras). Drive and Anthropic are faked in tests; no network.
-- **Agent ecosystem:** ingestion engine (operational) → Agent 1 Retriever (planned; not in repo) → **Agent 2 Critic & Validator** (`validator.py`, `validate` CLI; offline, zero spend). See ARCHITECTURE §9b.
+- **Agent ecosystem (both operational):**
+  - **Agent 1, Retriever & Router ✅ Operational / Complete.** Implemented by the ingestion pipeline and Markdown/Drive architecture: ingestion of Google Docs, `.docx`, and text-layer PDFs (`run`, `migrate`); automatic YAML frontmatter tagging (`topic`, `tags`, `core_stance`); category-first routing into the 5 core folders (`Category_1`–`Category_5`; real names in `config.local.yaml`); native Google Drive storage that serves as the retrieval index (route to folder → match frontmatter).
+  - **Agent 2, Critic & Validator ✅ Operational.** `validator.py` + `validate` CLI: audits the retrieved set and fact-checks drafts against the notes. Offline, zero spend.
+  - See ARCHITECTURE "Agent map" and §9b.
 - **Verified live (engineer-confirmed):** Google auth; dry runs end-to-end, including Haiku classification, frontmatter rendering, and cost logging.
 - **Pre-release security sweep (2026-11-11):** all committable files and full git history scanned for personal names, category names, API keys/OAuth secrets, and `.env` values. Clean. No sensitive filenames ever committed.
 - **Local-only, gitignored, NEVER commit:** `explainer_site/` (private; deployed separately), `config.local.yaml`, `.env`, `logs/`, `output/`, OAuth token/client secret (stored outside the repo).
@@ -22,6 +25,8 @@
 | 2 | Architecture | ✅ Complete |
 | 3 | Google auth, Inbox reading, Markdown export, dry run | ✅ Complete |
 | 4 | Haiku classification, cost logging, $1 cap, frontmatter, upload, `_Processed` move | ✅ Complete |
+| A1 | Agent 1: Retriever & Router (ingestion, frontmatter tagging, category routing, Drive storage) | ✅ Complete |
+| A2 | Agent 2: Critic & Validator | ✅ Complete |
 | — | Maintenance & feature expansion | 🔄 Ongoing (see backlog) |
 
 ## Standing Constraints (from engineer, 2026-11-11)
@@ -47,14 +52,14 @@ The engine is feature-complete for its original scope. Future sessions focus on 
 - ✅ `validator.py`: retrieval verification (existence, frontmatter validity, routing/category match, claimed-tag check, intent relevance, missed-note report) + hallucination guardrail (hard facts: figures+units, versions, ISO dates, quotes, code, proper nouns; lexical support per passage; negation check). Strict by default.
 - ✅ `validate` CLI (local `preview_dir`, `--kb DIR`, or read-only `--drive`); `DriveClient.list_markdown()`; 72 new offline tests.
 - ✅ Smoke-tested read-only against local previews: faithful claims supported; an invented figure, year, and vendor rejected.
-- ✅ Engineer-verified 2026-11-12. Next: build Agent 1 (Retriever) to emit `RetrievalHit` JSON and pipe drafts through `validate`; tune thresholds on real queries.
+- ✅ Engineer-verified 2026-11-12. Next: tune thresholds on real queries against Agent 1's Drive folders.
 
 **Feature backlog (unprioritized, each needs engineer approval):**
 1. **Re-ingest command** for already-processed docs (e.g. `reingest --doc-id ID`): clear the `dt_ingested` marker, optionally trash the old `.md`, move the doc back to the Inbox, preserving its original created date. Today the only workaround is copying the text into a new doc, which loses the original date.
 2. **Re-ingest on edit:** detect processed docs modified after ingestion and offer to refresh their `.md`.
 3. **Scheduling:** run automatically (Windows Task Scheduler or a cloud job) with the same spend cap.
 4. **Additional inputs:** PDFs, `.docx`, or Sheets in the Inbox.
-5. **RAG layer / Agent 1 Retriever:** category routing + frontmatter matching (optionally embeddings) over the Markdown corpus, emitting the `RetrievalHit` contract Agent 2 validates.
+5. **Agent 1 enhancement (optional): embedding search** over the Markdown corpus, alongside category routing + frontmatter matching, emitting `RetrievalHit` JSON for Agent 2.
 6. **Agent 2 LLM-judge layer (optional):** a Haiku pass for paraphrase/synonym support on claims the lexical check marks `weak`. Must follow the cost constraints (ledger + cap).
 
 **Maintenance checklist:**
@@ -87,6 +92,7 @@ The engine is feature-complete for its original scope. Future sessions focus on 
 | 2026-11-12 | Agent 2 validator is deterministic and lexical, with no LLM | Zero spend; reproducible verdicts; an invented figure can never "sound right" to a checker. Paraphrase may read as `weak` (fail-safe). |
 | 2026-11-12 | Hard facts must appear verbatim (numerically normalized) in a retrieved note; strict mode fails `weak` claims | "Zero hallucination of figures, specs, personal history" requirement. |
 | 2026-11-12 | `relevant` requires a frontmatter (tags/topic/stance) match, not just body overlap | Validates Agent 1's frontmatter-matching contract. |
+| 2026-11-12 | Agent 1 (Retriever & Router) = the ingestion pipeline + category-first Drive/Markdown architecture; marked Operational/Complete | Engineer decision: retrieval is served by the routed folder + frontmatter structure the pipeline produces. |
 | 2026-11-12 | Draft grounded against all retrieved notes that exist, regardless of relevance | Relevance and factuality are separate verdicts; missing notes ground nothing. |
 
 ## Session Log
@@ -103,3 +109,4 @@ The engine is feature-complete for its original scope. Future sessions focus on 
 - **2026-11-12 (Claude Code) #7:** Agent 2 (Critic & Validator): `validator.py`, `validate` CLI, `list_markdown`, 72 tests (158 total, 91% coverage). Docs + private operator manual + private explainer site updated. Security sweep of tracked + untracked files clean.
 - **2026-11-12 (Engineer):** Verified archive migration and Agent 2.
 - **2026-11-12 (Claude Code) #8:** Added `pytest-cov` to dev extras; committed migration + Agent 2; pushed to GitHub.
+- **2026-11-12 (Claude Code) #9:** Docs reclassified Agent 1 (Retriever & Router) as Operational/Complete (the pipeline + folder architecture); README, ARCHITECTURE, manifest, private manual and explainer site updated. Security sweep clean; tests 158 passing. Staged, not committed.
