@@ -1,0 +1,89 @@
+# =====================================================================
+# SECURITY: this repo is assumed PUBLIC. When in doubt, ignore it.
+# Rule of thumb: only source code, docs, and *.example templates are committed.
+# =====================================================================
+
+# --- Environment / secrets -------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+.envrc
+secrets/
+.secrets/
+
+# --- Google OAuth / service account credentials ----------------------
+credentials.json
+credentials*.json
+client_secret*.json
+token.json
+token*.json
+*token*.json
+*.pickle
+service_account*.json
+*-sa.json
+*.p12
+*.pem
+*.key
+*.crt
+*.keystore
+
+# --- Local config: personal taxonomy, folder IDs (MASKED) -------------
+# Only config.example.yaml (generic Category_N placeholders) is committed.
+config.yaml
+config.yml
+config.local.*
+*.local.yaml
+*.local.yml
+*.local.json
+!config.example.yaml
+
+# --- Cost metrics / observability (spend data stays local) ------------
+logs/
+cost_metrics*
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+*.db-journal
+*.log
+
+# --- Private, local-only materials (never published) -----------------
+explainer_site/
+
+# --- Runtime state, caches, scratch output ---------------------------
+state/
+output/
+out/
+tmp/
+.cache/
+
+# --- Python -----------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Editor / OS / agent-local metadata -------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+.claude/settings.local.json
+.gemini/

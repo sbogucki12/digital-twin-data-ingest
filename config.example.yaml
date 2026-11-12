@@ -1,0 +1,41 @@
+# Copy to config.local.yaml (gitignored) and replace with your real values.
+# This committed template intentionally uses generic placeholders only.
+#
+# destinations[].key  = exact name of a top-level folder under DIGITAL_TWIN_ROOT_FOLDER_ID.
+#                       It is also the only value Claude may return as destination_folder.
+# destinations[].description = used verbatim in the classification prompt.
+# destinations[].drive_folder_id = optional; if omitted, the folder is resolved by name.
+
+destinations:
+  - key: "Category_1"
+    description: "What belongs in category 1."
+  - key: "Category_2"
+    description: "What belongs in category 2."
+  - key: "Category_3"
+    description: "What belongs in category 3."
+  - key: "Category_4"
+    description: "What belongs in category 4."
+  - key: "Category_5"
+    description: "What belongs in category 5."
+
+anthropic:
+  model: "claude-haiku-5-5"  # cheapest current model with structured outputs
+  effort: "low"              # classification task; keeps thinking (billed as output) minimal
+  max_tokens: 2048           # room for brief thinking + the JSON object
+
+# USD per million tokens, used for local cost estimates. Built-in defaults exist for
+# claude-haiku-5-5; override here if Anthropic's published pricing changes.
+# pricing:
+#   claude-haiku-5-5:
+#     input_per_mtok: 0.10
+#     output_per_mtok: 0.50
+#     long_context_threshold_tokens: 100000   # prompts above this use the long rates
+#     long_input_per_mtok: 0.50
+#     long_output_per_mtok: 2.50
+
+ingest:
+  processed_folder_name: "_Processed"  # created inside the Inbox on first live run
+  max_doc_chars: 200000                # larger docs are skipped (cost guard), never truncated
+  preview_dir: "output"                # dry-run previews land here (gitignored)
+  cost_db: "logs/cost_metrics.sqlite"  # local cost ledger (gitignored)
+  max_cost_per_run_usd: 1.00           # hard stop per batch run; may be lowered, never raised above 1.00
