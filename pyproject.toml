@@ -14,12 +14,14 @@ dependencies = [
     "google-auth-oauthlib",
     "google-auth-httplib2",
     "pydantic>=2",
+    "pypdf",
+    "python-docx",
     "python-dotenv",
     "pyyaml",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "pytest-cov", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

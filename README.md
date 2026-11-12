@@ -88,7 +88,48 @@ python -m digital_twin_ingest run --live           # upload .md files + move sou
 python -m digital_twin_ingest costs                # estimated API spend per run
 ```
 
+### Migrating existing files (manifest-driven)
+
+For bulk-migrating an existing Drive folder (Google Docs, `.docx`, and PDFs with a text layer), build a reviewed CSV manifest and run:
+
+```powershell
+python -m digital_twin_ingest migrate --manifest archive_manifest.csv --limit 5   # dry run
+python -m digital_twin_ingest migrate --manifest archive_manifest.csv --live      # upload + tag
+```
+
+- Only rows with `decision=include` are processed; the manifest's `doc_date` is used as the note date, and an optional `max_chars_override` raises the length limit for that row only.
+- `.docx` is converted to Markdown locally (headings, lists, bold/italic, tables); PDF text is extracted locally. Nothing is downloaded to disk.
+- **Originals are never moved or edited.** Live mode only adds a hidden `dt_ingested` tag, so re-runs skip them. Files changed since the manifest was built are skipped.
+- Results are written to `<manifest>_results.csv`. Manifests list personal file names: keep them gitignored.
+
 **Dry run is the default.** It runs the full pipeline — including the (cost-logged, capped) Claude call — and writes previews to `output/<Category>/`, but makes **no** Drive changes. Only `--live` writes to Drive. Re-running is safe: processed docs are skipped, and an interrupted live run resumes without re-calling Claude or duplicating uploads.
+
+## Agent 2: Critic & Validator
+
+The ingestion engine builds the knowledge base. Answering questions *from* it is split between agents:
+
+| Agent | Role | Status |
+|---|---|---|
+| Ingestion engine | Google Docs → classified Markdown notes with YAML frontmatter | ✅ Operational |
+| **Agent 1: Retriever** | Routes a query to a category and matches notes on their frontmatter; drafts a response | Planned (not in this repo yet) |
+| **Agent 2: Critic & Validator** | Audits Agent 1's retrieval and fact-checks the draft against the notes' exact text | ✅ Built (`validator.py`) |
+
+Agent 2 is **deterministic and offline**: no model calls, no spend, no network (the optional Drive loader is read-only). It runs two checks:
+
+1. **Retrieval verification.** Every retrieved note must exist in the knowledge base, parse cleanly, be filed in the category Agent 1 claims, carry the frontmatter tags Agent 1 says it matched, and match the query's intent (a weighted overlap of query terms against tags, topic, `core_stance`, category, and body). It also lists strong notes Agent 1 *missed*.
+2. **Hallucination guardrail.** Each sentence of the draft is a claim. Its **hard facts** must appear in a retrieved note: figures with units (`-14 LUFS` ≠ `14 LUFS`, `30 Hz` ≠ `30 kHz`), versions, ISO dates, quoted text, inline and fenced code, and proper nouns. The remaining words must be supported by a single passage of a single note. A negation mismatch with the closest source sentence is flagged too. Questions and "I don't have notes on that" abstentions are skipped.
+
+A claim is `supported`, `weak` (partially supported), or `unsupported`. In the default **strict** mode, any `weak` or `unsupported` claim rejects the draft; `--lenient` only rejects `unsupported` ones. The checks are lexical by design: a faithful paraphrase may be sent back for revision, but an invented number is always caught.
+
+```powershell
+python -m digital_twin_ingest validate --query "What loudness target do I master to?" `
+    --doc Category_3/2026-02-10_mastering-chain.md --draft draft.md          # local preview_dir
+python -m digital_twin_ingest validate --query "..." --retrieval agent1.json --draft - --json
+python -m digital_twin_ingest validate --drive --query "..." --doc <file>.md   # read KB from Drive
+```
+
+`--retrieval` takes Agent 1's output as a JSON list of `{"note_id", "category"?, "matched_tags"?}`. Exit code `0` = approved, `1` = rejected, `2` = bad input.
+
 ## Project explainer site
 
 A companion single-page site explains the project for a general audience: the problem (a Drive full of unsorted notes), the five-step pipeline, and the engineering choices behind it (schema-locked output, the pre-flight spend cap, dry-run by default, crash-safe idempotency). It's deployed separately; its source is intentionally not part of this repository.
@@ -102,4 +143,4 @@ pytest -q
 ruff check src tests
 ```
 
-Tests use in-memory fakes for Drive and the Anthropic client and never touch the network.
+Tests use in-memory fakes for Drive and the Anthropic client and never touch the network. Coverage: `pytest --cov=digital_twin_ingest` (`pytest-cov` is in the `dev` extras).

@@ -66,6 +66,9 @@ class FakeFiles:
 
         return _Req(run)
 
+    def get_media(self, fileId: str, **_: Any) -> _Req:
+        return _Req(lambda: self.svc.blobs[fileId])
+
     def create(self, body: dict[str, Any], media_body: Any = None, **_: Any) -> _Req:
         def run():
             if self.svc.fail_uploads and media_body is not None:
@@ -102,6 +105,7 @@ class FakeDriveService:
     def __init__(self, page_size: int = 2):
         self.store: dict[str, dict[str, Any]] = {}
         self.exports: dict[str, str] = {}
+        self.blobs: dict[str, bytes] = {}
         self.page_size = page_size
         self.fail_uploads = False
         self.fail_moves = False
@@ -123,6 +127,19 @@ class FakeDriveService:
             f["appProperties"] = app_props
         self.store[fid] = f
         self.exports[fid] = body
+        return fid
+
+    def add_file(self, fid: str, name: str, parent: str, mime: str, data: bytes,
+                 app_props: dict | None = None) -> str:
+        """A non-Google (binary) file such as .docx or PDF, with an md5 checksum."""
+        import hashlib
+
+        f = {"id": fid, "name": name, "mimeType": mime, "parents": [parent],
+             "md5Checksum": hashlib.md5(data).hexdigest(), "modifiedTime": "2023-01-07T00:00:00Z"}
+        if app_props:
+            f["appProperties"] = app_props
+        self.store[fid] = f
+        self.blobs[fid] = data
         return fid
 
     def children(self, parent: str) -> list[dict[str, Any]]:

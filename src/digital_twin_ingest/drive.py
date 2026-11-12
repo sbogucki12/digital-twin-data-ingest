@@ -90,11 +90,21 @@ class DriveClient:
         ]
         return sorted(docs, key=lambda d: d.date_basis or datetime.min)
 
+    def list_markdown(self, folder_id: str) -> list[dict[str, Any]]:
+        """Generated .md notes directly in a category folder (read-only; used by the validator)."""
+        q = f"'{_q(folder_id)}' in parents and mimeType='{MARKDOWN_MIME}' and trashed=false"
+        return list(self._list(q, "id, name"))
+
     def get_doc(self, doc_id: str) -> SourceDoc:
         meta = self.get_file(doc_id)
         if meta.get("mimeType") != DOC_MIME:
             raise DriveError(f"{doc_id} is not a Google Doc")
         return _to_doc(meta)
+
+    def download(self, file_id: str) -> bytes:
+        """Raw bytes of a non-Google file (read-only)."""
+        data = self._svc.files().get_media(fileId=file_id, supportsAllDrives=True).execute()
+        return data if isinstance(data, bytes) else bytes(data)
 
     def export_markdown(self, doc_id: str) -> str:
         """Google's native Docs -> Markdown export (10 MB export limit applies)."""
@@ -172,6 +182,15 @@ class DriveClient:
             return existing
         body = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
         return self._svc.files().create(body=body, fields="id", supportsAllDrives=True).execute()["id"]
+
+    def tag_ingested(self, file_id: str, output_id: str) -> None:
+        """Tag a file as ingested WITHOUT moving it (metadata-only update)."""
+        self._svc.files().update(
+            fileId=file_id,
+            body={"appProperties": {INGESTED_KEY: "true", OUTPUT_KEY: output_id}},
+            fields="id",
+            supportsAllDrives=True,
+        ).execute()
 
     def mark_processed(self, doc_id: str, inbox_id: str, processed_id: str, output_id: str) -> None:
         """Move the source doc Inbox -> processed folder and tag it as ingested."""

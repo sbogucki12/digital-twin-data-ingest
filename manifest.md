@@ -5,10 +5,11 @@
 
 ## Current State
 
-- **Project status: ✅ OPERATIONAL** (Phases 1–4 complete; v0.1.0)
-- **Last updated:** 2026-11-11 by Claude Code
-- **Branch:** `main` · ready for first push to GitHub (engineer linking remote).
-- **Tests:** 47 passing (`pytest -q`), `ruff check` clean. Drive and Anthropic are faked in tests; no network.
+- **Project status: ✅ OPERATIONAL** (Phases 1–4 complete) · **Archive migration (`migrate`) and Agent 2 (Critic & Validator): engineer-verified, committed**
+- **Last updated:** 2026-11-12 by Claude Code
+- **Branch:** `main`, pushed to GitHub (`origin`). Migration feature and Agent 2 committed and pushed 2026-11-12.
+- **Tests:** 158 passing (`pytest -q`), `ruff check` clean, 91% line coverage overall (`validator.py` 100%; `pytest --cov=digital_twin_ingest`, `pytest-cov` in dev extras). Drive and Anthropic are faked in tests; no network.
+- **Agent ecosystem:** ingestion engine (operational) → Agent 1 Retriever (planned; not in repo) → **Agent 2 Critic & Validator** (`validator.py`, `validate` CLI; offline, zero spend). See ARCHITECTURE §9b.
 - **Verified live (engineer-confirmed):** Google auth; dry runs end-to-end, including Haiku classification, frontmatter rendering, and cost logging.
 - **Pre-release security sweep (2026-11-11):** all committable files and full git history scanned for personal names, category names, API keys/OAuth secrets, and `.env` values. Clean. No sensitive filenames ever committed.
 - **Local-only, gitignored, NEVER commit:** `explainer_site/` (private; deployed separately), `config.local.yaml`, `.env`, `logs/`, `output/`, OAuth token/client secret (stored outside the repo).
@@ -36,12 +37,25 @@
 
 The engine is feature-complete for its original scope. Future sessions focus on maintenance or scoped feature work, each following the phase-gate protocol above.
 
+**Active feature: archive migration** (approved 2026-11-11)
+- Step A ✅ read-only inventory → gitignored `archive_manifest.csv`; engineer-reviewed include list (Word + text-layer PDF only; employer documents, admin/financial/PII, third-party documents excluded).
+- Step B ✅ `migrate --manifest` built: local `.docx`/PDF extraction, manifest-authoritative dates, per-file length override, originals tagged in place (never moved), 39 new offline tests. Real-file extraction smoke test (no Claude, no writes): all included files extract cleanly.
+- Step C ⏳ engineer dry run `--limit 5` → full dry run → `--live`.
+- Deferred: spreadsheets, slides, oversized plain-text files, OCR for scanned PDFs.
+
+**Active feature: Agent 2, Critic & Validator** (requested 2026-11-12)
+- ✅ `validator.py`: retrieval verification (existence, frontmatter validity, routing/category match, claimed-tag check, intent relevance, missed-note report) + hallucination guardrail (hard facts: figures+units, versions, ISO dates, quotes, code, proper nouns; lexical support per passage; negation check). Strict by default.
+- ✅ `validate` CLI (local `preview_dir`, `--kb DIR`, or read-only `--drive`); `DriveClient.list_markdown()`; 72 new offline tests.
+- ✅ Smoke-tested read-only against local previews: faithful claims supported; an invented figure, year, and vendor rejected.
+- ✅ Engineer-verified 2026-11-12. Next: build Agent 1 (Retriever) to emit `RetrievalHit` JSON and pipe drafts through `validate`; tune thresholds on real queries.
+
 **Feature backlog (unprioritized, each needs engineer approval):**
 1. **Re-ingest command** for already-processed docs (e.g. `reingest --doc-id ID`): clear the `dt_ingested` marker, optionally trash the old `.md`, move the doc back to the Inbox, preserving its original created date. Today the only workaround is copying the text into a new doc, which loses the original date.
 2. **Re-ingest on edit:** detect processed docs modified after ingestion and offer to refresh their `.md`.
 3. **Scheduling:** run automatically (Windows Task Scheduler or a cloud job) with the same spend cap.
 4. **Additional inputs:** PDFs, `.docx`, or Sheets in the Inbox.
-5. **RAG layer:** embeddings/search over the digital twin's Markdown corpus.
+5. **RAG layer / Agent 1 Retriever:** category routing + frontmatter matching (optionally embeddings) over the Markdown corpus, emitting the `RetrievalHit` contract Agent 2 validates.
+6. **Agent 2 LLM-judge layer (optional):** a Haiku pass for paraphrase/synonym support on claims the lexical check marks `weak`. Must follow the cost constraints (ledger + cap).
 
 **Maintenance checklist:**
 - Keep Haiku pricing in `cost.py` defaults / `config.local.yaml` in sync with Anthropic's published rates.
@@ -67,6 +81,13 @@ The engine is feature-complete for its original scope. Future sessions focus on 
 | 2026-11-11 | `date` = created, fallback modified, never ingestion | Engineer decision. |
 | 2026-11-11 | `explainer_site/` is private and gitignored; public repo = generic engine + generic README only | Keeps personal details out of the public repo. |
 | 2026-11-11 | README links to the deployed explainer site but never its source | Socialize the project without publishing the site's code. |
+| 2026-11-11 | Archive migration via reviewed CSV manifest; originals tagged in place, never moved | Preserve archive folder structure; human approves every file before any API call. |
+| 2026-11-11 | `.docx` converted locally (python-docx), not via temporary Drive copies | Keeps dry run write-free. |
+| 2026-11-11 | Manifest `doc_date` authoritative (title → file metadata → Drive modified) | Bulk upload stamped every Drive created date with the upload day. |
+| 2026-11-12 | Agent 2 validator is deterministic and lexical, with no LLM | Zero spend; reproducible verdicts; an invented figure can never "sound right" to a checker. Paraphrase may read as `weak` (fail-safe). |
+| 2026-11-12 | Hard facts must appear verbatim (numerically normalized) in a retrieved note; strict mode fails `weak` claims | "Zero hallucination of figures, specs, personal history" requirement. |
+| 2026-11-12 | `relevant` requires a frontmatter (tags/topic/stance) match, not just body overlap | Validates Agent 1's frontmatter-matching contract. |
+| 2026-11-12 | Draft grounded against all retrieved notes that exist, regardless of relevance | Relevance and factuality are separate verdicts; missing notes ground nothing. |
 
 ## Session Log
 
@@ -77,3 +98,8 @@ The engine is feature-complete for its original scope. Future sessions focus on 
 - **2026-11-11 (Claude Code) #4:** Gitignored `explainer_site/`; README links only to the deployed site. Amended the initial commit so the old README never appears in history.
 - **2026-11-11 (Engineer):** Phase 4 dry runs flawless; explainer site deployed.
 - **2026-11-11 (Claude Code) #5:** Pre-release security sweep (clean). Marked project Operational; added maintenance/feature backlog. Final commit for public release.
+- **2026-11-11 (Engineer):** Pushed to GitHub. Live runs verified; sample outputs trashed.
+- **2026-11-11 (Claude Code) #6:** Archive migration Steps A–B: inventory + reviewed manifest (24 files, est. ~$0.02), `migrate` command, 86 tests. Awaiting engineer `--limit 5` dry run.
+- **2026-11-12 (Claude Code) #7:** Agent 2 (Critic & Validator): `validator.py`, `validate` CLI, `list_markdown`, 72 tests (158 total, 91% coverage). Docs + private operator manual + private explainer site updated. Security sweep of tracked + untracked files clean.
+- **2026-11-12 (Engineer):** Verified archive migration and Agent 2.
+- **2026-11-12 (Claude Code) #8:** Added `pytest-cov` to dev extras; committed migration + Agent 2; pushed to GitHub.

@@ -50,6 +50,10 @@ cost_metrics*
 
 # --- Private, local-only materials (never published) -----------------
 explainer_site/
+# Migration manifests list personal file names/paths
+archive_manifest*.csv
+*_manifest.csv
+*_manifest_results.csv
 
 # --- Runtime state, caches, scratch output ---------------------------
 state/

@@ -1,6 +1,6 @@
 # Architecture — Digital Twin Ingestion Engine
 
-Status: **Operational.** Phases 1–4 complete (2026-11-11). Future work is maintenance and scoped feature expansion; see `manifest.md`.
+Status: **Operational.** Phases 1–4 complete (2026-11-11). Agent 2 (Critic & Validator) added 2026-11-12 (§9b). Future work is maintenance and scoped feature expansion; see `manifest.md`.
 
 ## 1. Pipeline overview
 
@@ -32,6 +32,7 @@ Each document is processed **independently**: a failure on one doc is logged and
 | `analyzer.py` | Claude Haiku call → validated `DocAnalysis`; logs every response's cost | 4 ✅ |
 | `frontmatter.py` | Exact-format YAML frontmatter + filename | 4 ✅ |
 | `drive.py` (writes) | `upload_markdown()`, `unique_name()`, `ensure_folder()`, `mark_processed()`, `find_output_for_source()` | 4 ✅ |
+| `validator.py` | **Agent 2 (Critic & Validator):** retrieval verification + hallucination guardrail; `validate` CLI (§9b) | ✅ |
 
 **No personal taxonomy lives in source.** Destination keys/descriptions are read from config at runtime; the `destination_folder` enum is built from them dynamically.
 
@@ -110,12 +111,60 @@ date: YYYY-MM-DD
 - **Crash recovery:** if a prior run uploaded but failed to move, the next live run finds the `.md` by `dt_source_id`, finishes the move, and makes **no new Claude call or duplicate upload**.
 - **Dry run (default)**: full pipeline including the Claude call (cost-logged, capped), but zero Drive writes; previews land in `output/<Category>/<filename>.md` (gitignored).
 
+## 9a. Manifest-driven migration (`migrate`)
+
+For bulk-migrating existing Drive files, a reviewed CSV manifest (gitignored) lists exactly which file IDs to ingest.
+
+| Module | Responsibility |
+|---|---|
+| `manifest.py` | Load/validate manifest (include rows only, supported kinds `gdoc`/`docx`/`pdf`, ISO `doc_date`, optional `max_chars_override`); write `<manifest>_results.csv` |
+| `extract.py` | In-memory extraction: `.docx` → Markdown via python-docx (headings, lists, bold/italic, tables); PDF → text via pypdf (page numbers dropped, wrapped/hyphenated lines rejoined, bullets normalized) |
+| `dates.py` | Date resolution for manifest building: title date (weekday-validated, year from Drive) → embedded file metadata (if plausible) → Drive modified |
+| `migrate.py` | Per row: precheck (exists, not trashed, not already ingested, mimeType and md5 unchanged) → extract → `clean_markdown` → shared `process_text` |
+
+- **Shared core:** `pipeline.process_text` (checks, spend cap, crash recovery, analyze, render, preview/upload) is used by both `run` and `migrate`; only the finalize step differs. `run` moves the source to `_Processed`; `migrate` calls `tag_ingested` (metadata only, **no move**).
+- **Dates:** the manifest's `doc_date` is authoritative (bulk uploads make Drive dates unreliable).
+- **Dry run makes zero Drive writes**: exports and downloads are reads; local `.docx` conversion avoids temporary Drive copies.
+- `--limit` counts only files actually processed; already-ingested/changed files don't consume it.
+
+## 9b. Agent 2 — Critic & Validator (`validator.py`)
+
+```
+ query ──► Agent 1: Retriever (planned) ──► retrieved notes + draft ──► Agent 2: Critic & Validator
+           category routing +                                          │ 1. verify_retrieval
+           frontmatter matching                                        │ 2. verify_grounding
+                                                                       ▼
+                                                  APPROVED / REJECTED + per-note, per-claim reasons
+```
+
+Agent 2 is deterministic and offline: **no LLM calls, no spend, no network** (the Drive loader is read-only: `files.list` + `get_media`). It defines the contract Agent 1 must emit: a list of `RetrievalHit(note_id, category?, matched_tags?)` plus a draft.
+
+| Component | Responsibility |
+|---|---|
+| `parse_note` / `Note` | Parse a note's YAML frontmatter (`yaml.safe_load`), validate `topic`/`tags`/`core_stance`/`date`; `raw` keeps the exact source text |
+| `KnowledgeBase` | Notes keyed `<Category>/<file>.md`; `from_directory` (local `preview_dir`), `from_drive` (destination folders), `from_texts`. Unparseable/oversized/undecodable files are recorded in `errors`, never fatal. `resolve()` accepts exact IDs, Windows paths, or a unique bare filename |
+| `verify_retrieval` | Per hit: `missing` / `invalid` / `relevant` / `weak` / `irrelevant`, plus issues (routing mismatch, phantom tags) and warnings (outside routed category, duplicates). Reports up to 5 relevant notes not retrieved |
+| `verify_grounding` | Splits the draft into claims; checks hard facts and lexical support; returns per-claim status, best source note, and issues |
+| `validate` / `ValidationReport` | Both checks; `approved` = retrieval passed and grounding passed. `to_dict()` (JSON) and `format_report()` (text) |
+
+**Relevance score.** Query terms (lowercased, stopword- and question-filler-free, lightly stemmed) are matched against each note field. Each term scores its best field weight: tags 1.0, topic 1.0, `core_stance` 0.75, category 0.5, body 0.5. Score = mean over query terms. `relevant` needs score ≥ 0.5 **and** at least one frontmatter match, so body-only matches can't pass; `weak` ≥ 0.2; below that `irrelevant`. A query with no content terms is rejected as unverifiable.
+
+**Grounding.** Fenced code lines and headings are separated out, then prose is split into sentences (markdown bullets/emphasis stripped). Questions, abstentions ("I don't have notes on…"), and fact-free fragments of fewer than 3 content terms are skipped.
+
+- **Hard facts** must appear in some retrieved note: inline/fenced code (whitespace-normalized, case-sensitive), quotes (case-insensitive substring), ISO dates and versions (bounded literal), numbers (normalized: `1,000` = `1000`, `2.50` = `2.5`, sign kept; with a recognized unit, the `(value, unit)` pair must match: `48kHz` = `48 kHz`, `$2.5` = `2.50 dollars`), and proper nouns/acronyms (not sentence- or clause-initial; whole-word, case-insensitive).
+- **Lexical support** = the best fraction of the claim's non-numeric content terms found in one window of 3 consecutive sentences of one note. Numbers are excluded here because they're checked exactly above.
+- Status: any ungrounded fact, or support < 0.35 → `unsupported`; support < 0.6 or a negation mismatch with the closest source sentence → `weak`; otherwise `supported`. Strict mode (default) fails on `weak`.
+- The draft is grounded against **every retrieved note that exists and parses**, whether or not it was relevant. Relevance is judged separately. Missing notes ground nothing.
+
+**Known limits (lexical by design):** synonyms and heavy paraphrase read as `weak`; number words ("three") and sentence-initial proper nouns aren't fact-checked; a true fact from a note that wasn't retrieved still counts as unsupported. Thresholds live in `ValidatorConfig`. An LLM-judge pass for paraphrase is a possible later layer, subject to the cost constraints.
+
 ## 10. Security
 
 - **Secrets:** `.env`, OAuth client secret, token gitignored; templates only in git.
 - **Masking:** taxonomy and folder IDs only in gitignored `config.local.yaml` / `.env`; committed files use `Category_N` placeholders; tests use placeholders too.
 - **Prompt injection:** doc text is untrusted. It's passed as delimited data, the model has **no tools**, output is schema-constrained, and destination is a fixed enum. Worst case: a misfiled doc.
 - **Logging:** doc IDs and outcomes only — never document content or credentials. Google client HTTP logging is suppressed unless `-v`.
+- **Validator:** treats notes and drafts as untrusted text. It only reads them (YAML via `safe_load`, no code execution, no model calls) and has no write path to Drive or the filesystem. Its report echoes claim text to stdout only.
 
 ## 11. Out of scope (for now)
 
